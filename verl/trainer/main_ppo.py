@@ -60,19 +60,44 @@ def main(config):
 
 
 def run_ppo(config) -> None:
-    # TODO(linjunrong.ocss884): this ENV is left for resolving SGLang conflict with ray devices
-    # isolation, will solve in the future
-    os.environ["ENSURE_CUDA_VISIBLE_DEVICES"] = os.environ.get('CUDA_VISIBLE_DEVICES', '')
-    if not ray.is_initialized():
-        # this is for local ray cluster
-        ray.init(runtime_env={
-            'env_vars': {
-                'TOKENIZERS_PARALLELISM': 'true',
-                'NCCL_DEBUG': 'WARN',
-                'VLLM_LOGGING_LEVEL': 'WARN'
-            }
-        })
+    # # TODO(linjunrong.ocss884): this ENV is left for resolving SGLang conflict with ray devices
+    # # isolation, will solve in the future
+    # os.environ["ENSURE_CUDA_VISIBLE_DEVICES"] = os.environ.get('CUDA_VISIBLE_DEVICES', '')
+    # if not ray.is_initialized():
+    #     # this is for local ray cluster
+    #     ray.init(runtime_env={
+    #         'env_vars': {
+    #             'TOKENIZERS_PARALLELISM': 'true',
+    #             'NCCL_DEBUG': 'WARN',
+    #             'VLLM_LOGGING_LEVEL': 'WARN'
+    #         }
+    #     })
 
+    # runner = TaskRunner.remote()
+    # ray.get(runner.run.remote(config))
+    # Setup environment variables for distributed training
+
+    
+    env_vars = {
+        "TOKENIZERS_PARALLELISM": "true",      # 启用HuggingFace tokenizer并行处理
+        "NCCL_DEBUG": "WARN",                  # 设置NCCL通信库的日志级别
+        "VLLM_LOGGING_LEVEL": "INFO",          # 设置vLLM推理引擎的日志级别
+        "TORCH_NCCL_AVOID_RECORD_STREAMS": "1", # 优化NCCL通信性能
+        "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:False", # 配置PyTorch CUDA内存分配策略
+    }
+
+    # Try to connect to existing Ray cluster, create new instance if failed
+    try:
+        ray.init(address="auto", ignore_reinit_error=True)
+    except Exception as e:
+        print(f"Failed to connect to existing Ray cluster: {e}")
+        ray.init(runtime_env={"env_vars": env_vars})
+
+    # Setup local environment variables
+    for key, value in env_vars.items():
+        os.environ[key] = value
+
+    # Launch remote task runner
     runner = TaskRunner.remote()
     ray.get(runner.run.remote(config))
 
